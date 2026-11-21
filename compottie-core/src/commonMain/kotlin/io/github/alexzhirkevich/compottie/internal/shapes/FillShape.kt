@@ -21,6 +21,7 @@ import io.github.alexzhirkevich.compottie.internal.animation.defaultOpacity
 import io.github.alexzhirkevich.compottie.internal.content.Content
 import io.github.alexzhirkevich.compottie.internal.content.DrawingContent
 import io.github.alexzhirkevich.compottie.internal.content.PathContent
+import io.github.alexzhirkevich.compottie.internal.content.PathSources
 import io.github.alexzhirkevich.compottie.internal.content.nameOrDefault
 import io.github.alexzhirkevich.compottie.internal.effects.LayerEffectsState
 import io.github.alexzhirkevich.compottie.internal.helpers.FillRule
@@ -66,6 +67,9 @@ internal class FillShape(
 
     @Transient
     private val pathBuilder = PathBuilder()
+
+    @Transient
+    private val pathSources = PathSources()
 
     @Transient
     private val fillType = fillRule?.asPathFillType() ?: path.fillType
@@ -129,13 +133,7 @@ internal class FillShape(
 
         state.thisLayer.effectsApplier.applyTo(paint, state, effectsState)
 
-        path.rewind()
-        path.fillType = fillType
-
-        paths.fastForEach {
-            pathBuilder.addPath(it.getPath(state), parentMatrix)
-        }
-        pathBuilder.setTo(path)
+        buildPath(state, parentMatrix)
 
         drawScope.drawContext.canvas.drawPath(path, paint)
     }
@@ -147,14 +145,20 @@ internal class FillShape(
         outBounds: MutableRect
     ) {
 
-        path.rewind()
-        paths.fastForEach {
-            pathBuilder.addPath(it.getPath(state), parentMatrix)
-        }
-        pathBuilder.setTo(path)
+        buildPath(state, parentMatrix)
 
         outBounds.set(path.getBounds())
         outBounds.extendBy(1f)
+    }
+
+    private fun buildPath(state: AnimationState, matrix: Matrix) {
+        if (!pathSources.collect(paths, state, matrix)) {
+            return
+        }
+        pathSources.paths.fastForEach {
+            pathBuilder.addPath(it, matrix)
+        }
+        pathBuilder.setTo(path)
     }
 
     override fun setDynamicProperties(basePath: String?, properties: DynamicShapeLayerProvider?) {

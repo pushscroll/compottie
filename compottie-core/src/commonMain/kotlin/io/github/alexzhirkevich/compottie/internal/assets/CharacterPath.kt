@@ -2,6 +2,7 @@ package io.github.alexzhirkevich.compottie.internal.assets
 
 import androidx.compose.ui.graphics.Matrix
 import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import io.github.alexzhirkevich.compottie.internal.AnimationState
@@ -12,6 +13,7 @@ import io.github.alexzhirkevich.compottie.internal.shapes.Shape
 import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 import kotlinx.serialization.json.JsonContentPolymorphicSerializer
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.jsonObject
@@ -37,6 +39,9 @@ internal sealed interface CharacterPath {
 
         private val shape = GroupShape(items = shapes)
 
+        @Transient
+        private val transformedPath = Path()
+
         override fun draw(
             scope: DrawScope,
             state: AnimationState,
@@ -44,7 +49,9 @@ internal sealed interface CharacterPath {
             strokePaint: Paint,
             fillPaint: Paint
         ) {
-            val path = shape.getPath(state)
+            val path = transformedPath
+            path.rewind()
+            path.addPath(shape.getPath(state))
             path.transform(parentMatrix)
 
             scope.drawIntoCanvas {

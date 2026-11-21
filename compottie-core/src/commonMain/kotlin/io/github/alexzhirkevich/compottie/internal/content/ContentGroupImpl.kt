@@ -5,6 +5,7 @@ import androidx.compose.ui.graphics.Matrix
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.util.fastForEach
 import androidx.compose.ui.util.fastForEachReversed
 import io.github.alexzhirkevich.compottie.internal.AnimationState
 import io.github.alexzhirkevich.compottie.internal.animation.AnimatedTransform
@@ -30,6 +31,7 @@ internal class ContentGroupImpl(
     private val matrix = Matrix()
     private val path = Path()
     private val pathBuilder = PathBuilder()
+    private val pathSources = PathSources()
 
     override fun hidden(state: AnimationState): Boolean {
         return hidden?.invoke(state) == true
@@ -98,17 +100,31 @@ internal class ContentGroupImpl(
         }
     }
 
+    override var pathVersion: Int = 0
+        private set
+
+    private var isHiddenPath = false
+
     override fun getPath(state: AnimationState): Path {
 
-        path.rewind()
         if (hidden(state)) {
+            if (!isHiddenPath) {
+                path.rewind()
+                isHiddenPath = true
+                pathSources.invalidate()
+                pathVersion = nextPathVersion(pathVersion)
+            }
             return path
         }
+        isHiddenPath = false
         val transformMatrix = transform?.matrix(state) ?: IdentityMatrix
-        pathContents.fastForEachReversed {
-            pathBuilder.addPath(it.getPath(state), transformMatrix)
+        if (pathSources.collect(pathContents, state, transformMatrix, reversed = true)) {
+            pathSources.paths.fastForEach {
+                pathBuilder.addPath(it, transformMatrix)
+            }
+            pathBuilder.setTo(path)
+            pathVersion = nextPathVersion(pathVersion)
         }
-        pathBuilder.setTo(path)
 
         return path
     }

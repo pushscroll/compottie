@@ -15,6 +15,7 @@ import io.github.alexzhirkevich.compottie.internal.animation.dynamicOffset
 import io.github.alexzhirkevich.compottie.internal.animation.dynamicSize
 import io.github.alexzhirkevich.compottie.internal.content.Content
 import io.github.alexzhirkevich.compottie.internal.content.PathContent
+import io.github.alexzhirkevich.compottie.internal.content.nextPathVersion
 import io.github.alexzhirkevich.compottie.internal.content.nameOrDefault
 import io.github.alexzhirkevich.compottie.internal.helpers.CompoundSimultaneousTrimPath
 import io.github.alexzhirkevich.compottie.internal.helpers.CompoundTrimPath
@@ -56,14 +57,47 @@ internal class EllipseShape(
     @Transient
     private var dynamicShape : DynamicShapeProvider? = null
 
+    @Transient
+    private var builtSize = 0L
+
+    @Transient
+    private var builtPosition = 0L
+
+    @Transient
+    private var isBuilt = false
+
+    @Transient
+    private var isHiddenPath = false
+
+    @Transient
+    override var pathVersion: Int = 0
+        private set
+
     override fun getPath(state: AnimationState): Path {
 
         if (dynamicShape?.hidden.derive(hidden, state)) {
-            path.rewind()
+            if (!isHiddenPath) {
+                path.rewind()
+                isHiddenPath = true
+                isBuilt = false
+                pathVersion = nextPathVersion(pathVersion)
+            }
             return path
         }
+        isHiddenPath = false
 
-        val size = Vec2(size.interpolatedVec(state)).toSize()
+        val packedSize = size.interpolatedVec(state)
+        val packedPosition = position.interpolatedVec(state)
+
+        if (isBuilt && trimPaths == null && packedSize == builtSize && packedPosition == builtPosition) {
+            return path
+        }
+        builtSize = packedSize
+        builtPosition = packedPosition
+        isBuilt = true
+        pathVersion = nextPathVersion(pathVersion)
+
+        val size = Vec2(packedSize).toSize()
 
         val halfWidth = size.width / 2f
         val halfHeight = size.height / 2f
@@ -87,7 +121,7 @@ internal class EllipseShape(
         path.cubicTo(-halfWidth, 0 - cpH, 0 - cpW, -halfHeight, 0f, -halfHeight)
 //        }
 
-        val position = Vec2(position.interpolatedVec(state))
+        val position = Vec2(packedPosition)
         if (position != Vec2.Zero) {
             path.translate(position)
         }

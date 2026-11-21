@@ -30,6 +30,7 @@ import io.github.alexzhirkevich.compottie.internal.animation.interpolatedNorm
 import io.github.alexzhirkevich.compottie.internal.content.Content
 import io.github.alexzhirkevich.compottie.internal.content.DrawingContent
 import io.github.alexzhirkevich.compottie.internal.content.PathContent
+import io.github.alexzhirkevich.compottie.internal.content.PathSources
 import io.github.alexzhirkevich.compottie.internal.content.nameOrDefault
 import io.github.alexzhirkevich.compottie.internal.effects.LayerEffectsState
 import io.github.alexzhirkevich.compottie.internal.helpers.DashType
@@ -100,6 +101,9 @@ internal abstract class BaseStrokeShape() : Shape, DrawingContent {
     private val trimPathPath = Path()
     private val path = Path()
     private val pathBuilder = PathBuilder()
+    private val boundsPath = Path()
+    private val boundsSources = PathSources()
+    private var allPaths: List<PathContent> = emptyList()
     private val rawBoundsRect = MutableRect(0f, 0f, 0f, 0f)
 
     protected val paint by lazy {
@@ -193,11 +197,14 @@ internal abstract class BaseStrokeShape() : Shape, DrawingContent {
                 if (pathGroup.trimPath != null) {
                     applyTrimPath(canvas, state, pathGroup)
                 } else {
-                    path.rewind()
-                    pathGroup.paths.fastForEachReversed {
-                        path.addPath(it.getPath(state))
+                    val groupPath = pathGroup.path
+                    if (pathGroup.sources.collect(pathGroup.paths, state, reversed = true)) {
+                        groupPath.rewind()
+                        pathGroup.sources.paths.fastForEach {
+                            groupPath.addPath(it)
+                        }
                     }
-                    canvas.drawPath(path, paint)
+                    canvas.drawPath(groupPath, paint)
                 }
             }
             canvas.restore()
@@ -237,6 +244,8 @@ internal abstract class BaseStrokeShape() : Shape, DrawingContent {
         }
 
         currentPathGroup?.let(pathGroups::add)
+
+        allPaths = pathGroups.flatMap { it.paths }
     }
 
     override fun getBounds(
@@ -246,15 +255,14 @@ internal abstract class BaseStrokeShape() : Shape, DrawingContent {
         state: AnimationState,
         outBounds: MutableRect,
     ) {
-        path.rewind()
-        pathGroups.fastForEach { pathGroup ->
-            pathGroup.paths.fastForEach {
-                pathBuilder.addPath(it.getPath(state), parentMatrix)
+        if (boundsSources.collect(allPaths, state, parentMatrix)) {
+            boundsSources.paths.fastForEach {
+                pathBuilder.addPath(it, parentMatrix)
             }
+            pathBuilder.setTo(boundsPath)
         }
-        pathBuilder.setTo(path)
 
-        outBounds.set(path.getBounds())
+        outBounds.set(boundsPath.getBounds())
         outBounds.extendBy(strokeWidth.interpolatedFloat(state) + 1)
     }
 
@@ -381,4 +389,8 @@ private class PathGroup(
 ) {
 
     val paths: MutableList<PathContent> = mutableListOf()
+
+    val path: Path = Path()
+
+    val sources: PathSources = PathSources()
 }

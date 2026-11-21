@@ -16,6 +16,7 @@ import io.github.alexzhirkevich.compottie.internal.animation.dynamicOffset
 import io.github.alexzhirkevich.compottie.internal.animation.dynamicSize
 import io.github.alexzhirkevich.compottie.internal.content.Content
 import io.github.alexzhirkevich.compottie.internal.content.PathContent
+import io.github.alexzhirkevich.compottie.internal.content.nextPathVersion
 import io.github.alexzhirkevich.compottie.internal.content.nameOrDefault
 import io.github.alexzhirkevich.compottie.internal.helpers.CompoundSimultaneousTrimPath
 import io.github.alexzhirkevich.compottie.internal.helpers.CompoundTrimPath
@@ -71,17 +72,57 @@ internal class RectShape(
         roundedCorners?.prepareExpressions(state)
     }
 
+    @Transient
+    private var builtPosition = 0L
+
+    @Transient
+    private var builtSize = 0L
+
+    @Transient
+    private var builtRadius = 0f
+
+    @Transient
+    private var isBuilt = false
+
+    @Transient
+    private var isHiddenPath = false
+
+    @Transient
+    override var pathVersion: Int = 0
+        private set
+
     override fun getPath(state: AnimationState): Path {
+
+        if (dynamicShape?.hidden.derive(hidden, state)) {
+            if (!isHiddenPath) {
+                path.rewind()
+                isHiddenPath = true
+                isBuilt = false
+                pathVersion = nextPathVersion(pathVersion)
+            }
+            return path
+        }
+        isHiddenPath = false
+
+        val packedPosition = position.interpolatedVec(state)
+        val packedSize = size.interpolatedVec(state)
+        var radius =  roundedCorners?.interpolatedFloat(state) ?: 0f
+
+        if (isBuilt && trimPaths == null && packedPosition == builtPosition &&
+            packedSize == builtSize && radius == builtRadius
+        ) {
+            return path
+        }
+        builtPosition = packedPosition
+        builtSize = packedSize
+        builtRadius = radius
+        isBuilt = true
+        pathVersion = nextPathVersion(pathVersion)
 
         path.rewind()
 
-        if (dynamicShape?.hidden.derive(hidden, state)) {
-            return path
-        }
-
-        val position = Vec2(position.interpolatedVec(state))
-        val size = Vec2(size.interpolatedVec(state))
-        var radius =  roundedCorners?.interpolatedFloat(state) ?: 0f
+        val position = Vec2(packedPosition)
+        val size = Vec2(packedSize)
 
         val halfWidth = size.x / 2f
         val halfHeight = size.y / 2f

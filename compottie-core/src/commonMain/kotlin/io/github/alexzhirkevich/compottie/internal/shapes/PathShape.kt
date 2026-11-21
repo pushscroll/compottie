@@ -10,6 +10,7 @@ import io.github.alexzhirkevich.compottie.internal.AnimationState
 import io.github.alexzhirkevich.compottie.internal.animation.AnimatedShape
 import io.github.alexzhirkevich.compottie.internal.content.Content
 import io.github.alexzhirkevich.compottie.internal.content.PathContent
+import io.github.alexzhirkevich.compottie.internal.content.nextPathVersion
 import io.github.alexzhirkevich.compottie.internal.content.nameOrDefault
 import io.github.alexzhirkevich.compottie.internal.helpers.CompoundSimultaneousTrimPath
 import io.github.alexzhirkevich.compottie.internal.helpers.CompoundTrimPath
@@ -54,15 +55,37 @@ internal class PathShape(
     @Transient
     private var dynamicShape : DynamicShapeProvider? = null
 
+    @Transient
+    private var isStaticPathBuilt = false
+
+    @Transient
+    private var isHiddenPath = false
+
+    @Transient
+    override var pathVersion: Int = 0
+        private set
+
     override fun getPath(state: AnimationState): Path {
-        path.rewind()
         if (dynamicShape?.hidden.derive(hidden, state)) {
+            if (!isHiddenPath) {
+                path.rewind()
+                isHiddenPath = true
+                isStaticPathBuilt = false
+                pathVersion = nextPathVersion(pathVersion)
+            }
             return path
         }
+        isHiddenPath = false
+        if (isStaticPathBuilt) {
+            return path
+        }
+        pathVersion = nextPathVersion(pathVersion)
+        path.rewind()
         path.set(shape.interpolated(state))
         path.fillType = PathFillType.EvenOdd
 
         trimPaths?.apply(path, state)
+        isStaticPathBuilt = shape is AnimatedShape.Default && trimPaths == null
         return path
     }
 
