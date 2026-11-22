@@ -3,6 +3,7 @@ package io.github.alexzhirkevich.compottie
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.ImageBitmap
@@ -11,6 +12,8 @@ import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
+import io.github.alexzhirkevich.compottie.dynamic.DynamicCompositionProvider
+import io.github.alexzhirkevich.compottie.dynamic.createLottieDynamicProperties
 import kotlinx.coroutines.runBlocking
 import org.jetbrains.skia.impl.Stats
 import java.util.concurrent.ConcurrentHashMap
@@ -66,10 +69,50 @@ class PathCacheTest {
         assertEquals(0, counter["PathBuilder"] ?: 0, "Skia path builders")
     }
 
+    /** Rep's eyes follow the finger through a layer offset that changes while the frame stays the same. */
+    @Test
+    fun layerOffsetThatChangesOnTheSameFrameRedrawsTheShapes() {
+        var shift = 0f
+        fun eyes() = createLottieDynamicProperties {
+            layer("eyes") { transform { offset { source -> source + Offset(shift, shift / 2) } } }
+        } as DynamicCompositionProvider
+
+        val reused = Painter(composition(EYES), eyes())
+        for (value in listOf(0f, 12f, 12f, -8f, 0f, 20f)) {
+            shift = value
+            val expected = Painter(composition(EYES), eyes()).render(30, 60)
+            assertContentEquals(expected, reused.render(30, 60), "offset $value")
+        }
+        shift = 0f
+        val still = Painter(composition(EYES), eyes()).render(30, 60)
+        shift = 20f
+        val moved = Painter(composition(EYES), eyes()).render(30, 60)
+        assertTrue(!still.contentEquals(moved), "the offset moves nothing")
+    }
+
+    /**
+     * Two players can draw one loaded animation at once, for example during a crossfade.
+     * Tag 2.3.0 already draws the gradient case wrong with a shared composition, so it is left out.
+     * */
+    @Test
+    fun twoPaintersOnOneCompositionDrawTheirOwnFrames() {
+        for ((name, json) in ANIMATIONS - "nested groups with a gradient") {
+            val shared = composition(json)
+            val frames = shared.durationFrames.toInt()
+            val first = Painter(shared)
+            val second = Painter(shared)
+            for (frame in 0 until frames step 5) {
+                val other = frames - 1 - frame
+                assertContentEquals(Painter(composition(json)).render(frame, frames), first.render(frame, frames), "$name, first painter, frame $frame")
+                assertContentEquals(Painter(composition(json)).render(other, frames), second.render(other, frames), "$name, second painter, frame $other")
+            }
+        }
+    }
+
     private fun composition(json: String): LottieComposition =
         runBlocking { LottieCompositionSpec.JsonString(json).load() }
 
-    private class Painter(composition: LottieComposition) {
+    private class Painter(composition: LottieComposition, dynamicProperties: DynamicCompositionProvider? = null) {
         var progress by mutableFloatStateOf(0f)
         val impl = LottiePainterImpl(
             composition = composition,
@@ -77,7 +120,7 @@ class PathCacheTest {
             assets = composition.animation.assets,
             fonts = emptyMap(),
             theme = null,
-            dynamicProperties = null,
+            dynamicProperties = dynamicProperties,
             textMeasurer = TextMeasurer(mockFontFamilyResolver(), Density(1f), LayoutDirection.Ltr),
             applyOpacityToLayers = false,
             clipTextToBoundingBoxes = false,
@@ -162,6 +205,11 @@ class PathCacheTest {
             "hasMask":true,
             "masksProperties":[{"mode":"a","inv":false,"o":${still("100")},"pt":$MASK_PATH}]
         """.trimIndent()
+
+        val EYES = animation(
+            layer(1, group(STILL_ELLIPSE, STILL_RECT, FILL, STROKE, GRADIENT_FILL, STILL_TRANSFORM), extra = ",\"nm\":\"eyes\""),
+            layer(2, group(SQUARE_PATH, FILL, TURNING_TRANSFORM)),
+        )
 
         val ANIMATIONS = mapOf(
             "still shapes in a turning group" to animation(
