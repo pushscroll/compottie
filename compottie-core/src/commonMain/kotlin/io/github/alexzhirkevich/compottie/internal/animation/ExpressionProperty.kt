@@ -71,7 +71,7 @@ public sealed class ExpressionProperty<T : Any> : AnimatedProperty<T>, Expressio
         interpolated: (AnimatedProperty<*>, AnimationState) -> R,
         map : (Any) -> R
     ): R {
-        if (!state.enableExpressions) {
+        if (expression == null || !state.enableExpressions) {
             return raw(this, state)
         }
 

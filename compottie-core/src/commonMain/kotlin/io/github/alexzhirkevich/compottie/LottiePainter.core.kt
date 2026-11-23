@@ -133,7 +133,7 @@ public fun rememberLottiePainter(
 
         if (composition != null) {
 
-            val comp = if (copy) composition.deepCopy() else composition
+            val comp = if (copy) withContext(coroutineContext) { composition.deepCopy() } else composition
 
             val assets = if (comp.hasAssets) {
                 async(coroutineContext) {
